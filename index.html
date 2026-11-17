@@ -26,12 +26,21 @@
       <p class="sub" id="todayLine">오늘 기록을 불러오는 중…</p>
     </header>
 
+    <div class="placebar" role="group" aria-label="지금 있는 곳">
+      <span class="label">지금 있는 곳</span>
+      <div class="seg place-seg" id="placeSeg">
+        <button type="button" data-place="in" aria-pressed="false">실내</button>
+        <button type="button" data-place="out" aria-pressed="false">실외</button>
+        <button type="button" data-place="move" aria-pressed="false">드나든 직후</button>
+      </div>
+    </div>
+
     <div class="press-wrap">
       <button class="press" id="pressBtn" type="button" aria-describedby="pressHint">
         <span class="press-plus" aria-hidden="true">+1</span>
         <span class="press-label">흡입 기록</span>
       </button>
-      <p class="hint" id="pressHint">누르는 순간의 시각·위치·날씨·미세먼지가 함께 저장돼요</p>
+      <p class="hint" id="pressHint">누르는 순간의 시각·위치·바깥 날씨·미세먼지가 함께 저장돼요. 실내라면 실내 수치도 적을 수 있어요</p>
     </div>
 
     <div class="card just" id="justCard" hidden></div>
@@ -74,7 +83,20 @@
       </section>
 
       <section class="card">
-        <div><h2>날씨·미세먼지</h2><p class="sub" id="wxLine">그날 위치의 하루 날씨와 사용량을 비교해요</p></div>
+        <div><h2>실내·실외</h2><p class="sub">어디에 있을 때 흡입기를 썼는지</p></div>
+        <div class="blocks" id="placeBlocks"></div>
+        <div id="indoorStats"></div>
+      </section>
+
+      <section class="card">
+        <div class="row between wrap">
+          <div><h2>날씨·미세먼지</h2><p class="sub" id="wxLine">그날 위치의 하루 날씨와 사용량을 비교해요</p></div>
+          <div class="seg" role="group" aria-label="비교할 기록">
+            <button type="button" data-wxf="all" aria-pressed="true">전체</button>
+            <button type="button" data-wxf="out" aria-pressed="false">실외만</button>
+            <button type="button" data-wxf="in" aria-pressed="false">실내만</button>
+          </div>
+        </div>
         <div id="wxInsight"></div>
         <div id="wxSections"></div>
       </section>
@@ -160,6 +182,17 @@
       <output id="editPuffs">1</output>
       <button type="button" id="editPlus" aria-label="한 번 더하기">+</button>
     </div>
+    <div class="label">있던 곳</div>
+    <div class="chips" id="editPlace"></div>
+    <fieldset class="indoor" id="indoorBox" hidden>
+      <legend class="label">실내 수치 (선택 · 공기청정기·온습도계 화면을 보고 적어 주세요)</legend>
+      <div class="indoor-grid">
+        <label>기온<span><input type="number" id="inT" inputmode="decimal" step="0.5" min="-10" max="45">°C</span></label>
+        <label>습도<span><input type="number" id="inRh" inputmode="numeric" step="1" min="0" max="100">%</span></label>
+        <label>초미세먼지<span><input type="number" id="inPm" inputmode="numeric" step="1" min="0" max="999">㎍/㎥</span></label>
+      </div>
+      <button type="button" class="ghost small" id="inLast" hidden>지난번 실내 수치 넣기</button>
+    </fieldset>
     <div class="label">상황 (선택)</div>
     <div class="chips" id="editTags"></div>
     <label class="label" for="editNote">메모</label>

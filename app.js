@@ -2,9 +2,11 @@ import { store } from "./store.js";
 import * as A from "./analysis.js";
 import { currentWeather, weatherAt, dailyRange, searchPlace, placeName } from "./weather.js";
 
-const VERSION = "1.0.0";
+const VERSION = "1.1.0";
 const TAGS = [["exercise", "운동"], ["cold", "감기·기침"], ["night", "밤에 깸"], ["smoke", "담배 연기"], ["dust", "먼지·청소"],
-  ["pollen", "꽃가루"], ["pet", "반려동물"], ["chill", "찬 공기"], ["stress", "스트레스"], ["smell", "강한 냄새"]];
+  ["pollen", "꽃가루"], ["pet", "반려동물"], ["chill", "찬 공기"], ["stress", "스트레스"], ["smell", "강한 냄새"],
+  ["cooking", "요리 연기"], ["mold", "곰팡이"], ["hvac", "에어컨·난방"]];
+const PLACENAME = Object.fromEntries(A.PLACES);
 const TAGNAME = Object.fromEntries(TAGS);
 
 const $ = s => document.querySelector(s);
@@ -15,7 +17,7 @@ const r1 = v => (Math.round(v * 10) / 10).toFixed(1);
 const hm = ts => { const d = new Date(ts); return `${A.pad(d.getHours())}:${A.pad(d.getMinutes())}`; };
 const prettyDate = s => { const d = A.parseYmd(s); return `${d.getMonth() + 1}월 ${d.getDate()}일 (${A.WEEKDAYS[d.getDay()]})`; };
 
-const S = { events: [], daily: new Map(), meta: {}, view: "log", period: "month", shown: 7, syncing: false, syncNote: "", editing: null };
+const S = { events: [], daily: new Map(), meta: {}, view: "log", period: "month", wxFilter: "all", shown: 7, syncing: false, syncNote: "", editing: null };
 
 /* ---------- 저장 ---------- */
 async function saveEvent(ev) { await store.put("events", ev); }
@@ -46,7 +48,7 @@ async function logPuff() {
   const btn = $("#pressBtn");
   btn.classList.remove("pulse"); void btn.offsetWidth; btn.classList.add("pulse");
   if (navigator.vibrate) navigator.vibrate(25);
-  const ev = { id: uid(), ts: Date.now(), puffs: 1, tags: [], note: "", loc: null, wx: null, wxStatus: "loading" };
+  const ev = { id: uid(), ts: Date.now(), puffs: 1, tags: [], note: "", place: S.meta.place || null, indoor: null, loc: null, wx: null, wxStatus: "loading" };
   S.events.unshift(ev);
   await saveEvent(ev);
   renderLog(); showJust(ev);
@@ -146,7 +148,22 @@ function switchView(v) {
   function b(x) { return { log: renderLog, stats: () => { renderStats(); scheduleSync(); }, settings: renderSettings }[x]; }
 }
 
+function placePills(ev) {
+  if (!ev.place) return "";
+  let s = `<span class="pill place">${PLACENAME[ev.place]}</span>`;
+  const i = ev.indoor;
+  if (ev.place === "in" && i) {
+    const p = [];
+    if (i.t != null) p.push(`${i.t}°C`); if (i.rh != null) p.push(`습도 ${i.rh}%`);
+    if (i.pm25 != null) p.push(`초미세 ${i.pm25} ${A.pm25Grade(i.pm25)}`);
+    if (p.length) s += `<span class="pill">실내 ${p.join(" · ")}</span>`;
+  }
+  return s;
+}
 function wxPills(ev) {
+  return placePills(ev) + (ev.place === "in" ? `<span class="pill status">바깥</span>` : "") + outdoorPills(ev);
+}
+function outdoorPills(ev) {
   if (ev.wxStatus === "loading") return `<span class="pill status">날씨 가져오는 중…</span>`;
   if (ev.wxStatus === "noloc") return `<span class="pill status">위치를 몰라 날씨 없음</span>`;
   if (ev.wxStatus === "pending" || !ev.wx) return `<span class="pill status">날씨 대기 중 (인터넷 연결 시 채움)</span>`;
@@ -194,14 +211,19 @@ function showJust(ev) {
   S.justId = ev.id;
   const el = $("#justCard");
   el.hidden = false;
-  el.innerHTML = `<div class="row between"><span class="when">${hm(ev.ts)} 기록됨</span><button class="ghost small" type="button" data-edit="${ev.id}">상황 추가·수정</button></div>
-    <div class="wx">${wxPills(ev)}</div>${ev.loc ? `<span class="sub">${placeText(ev)}</span>` : ""}`;
+  const needIndoor = ev.place === "in" && !ev.indoor;
+  el.innerHTML = `<div class="row between"><span class="when">${hm(ev.ts)} 기록됨</span><button class="ghost small" type="button" data-edit="${ev.id}">${needIndoor ? "실내 수치·상황 적기" : "상황 추가·수정"}</button></div>
+    <div class="wx">${wxPills(ev)}</div>${ev.loc ? `<span class="sub">${placeText(ev)}</span>` : ""}
+    ${ev.place ? "" : `<span class="sub">실내였는지 실외였는지 위의 “지금 있는 곳”에서 골라 두면 다음 기록부터 함께 저장돼요.</span>`}`;
 }
 
 /* ---------- 수정 창 ---------- */
 function toLocalInput(ts) { const d = new Date(ts); return `${A.ymd(d)}T${A.pad(d.getHours())}:${A.pad(d.getMinutes())}`; }
 function openEdit(ev, isNew) {
-  S.editing = { ev, isNew, puffs: A.evPuffs(ev), tags: [...(ev.tags || [])], delArm: false };
+  S.editing = { ev, isNew, puffs: A.evPuffs(ev), tags: [...(ev.tags || [])], place: isNew ? (S.meta.place || null) : (ev.place || null), delArm: false };
+  const i = ev.indoor || {};
+  $("#inT").value = i.t ?? ""; $("#inRh").value = i.rh ?? ""; $("#inPm").value = i.pm25 ?? "";
+  $("#inLast").hidden = !lastIndoor(ev.id);
   $("#editTitle").textContent = isNew ? "지난 기록 추가" : "기록 수정";
   $("#editTime").value = toLocalInput(ev.ts);
   $("#editTime").max = toLocalInput(Date.now());
@@ -216,6 +238,17 @@ function paintEdit() {
   const e = S.editing;
   $("#editPuffs").textContent = e.puffs;
   $("#editTags").innerHTML = TAGS.map(([k, n]) => `<button type="button" class="chip" data-tag="${k}" aria-pressed="${e.tags.includes(k)}">${n}</button>`).join("");
+  $("#editPlace").innerHTML = A.PLACES.map(([k, n]) => `<button type="button" class="chip" data-place="${k}" aria-pressed="${e.place === k}">${n}</button>`).join("");
+  $("#indoorBox").hidden = e.place !== "in";
+}
+function lastIndoor(exceptId) { return S.events.find(x => x.id !== exceptId && x.place === "in" && x.indoor); }
+$("#editPlace").onclick = e => { const b = e.target.closest("[data-place]"); if (!b) return; const k = b.dataset.place; S.editing.place = S.editing.place === k ? null : k; paintEdit(); };
+$("#inLast").onclick = () => { const l = lastIndoor(S.editing.ev.id); if (!l) return; $("#inT").value = l.indoor.t ?? ""; $("#inRh").value = l.indoor.rh ?? ""; $("#inPm").value = l.indoor.pm25 ?? ""; };
+function readIndoor() {
+  const num = (id, lo, hi) => { const v = $(id).value.trim(); if (v === "") return null; const n = Number(v); return Number.isFinite(n) && n >= lo && n <= hi ? Math.round(n * 10) / 10 : undefined; };
+  const t = num("#inT", -10, 45), rh = num("#inRh", 0, 100), pm25 = num("#inPm", 0, 999);
+  if ([t, rh, pm25].includes(undefined)) return undefined;
+  return t == null && rh == null && pm25 == null ? null : { t, rh, pm25 };
 }
 $("#editPlus").onclick = () => { S.editing.puffs = Math.min(20, S.editing.puffs + 1); paintEdit(); };
 $("#editMinus").onclick = () => { S.editing.puffs = Math.max(1, S.editing.puffs - 1); paintEdit(); };
@@ -232,8 +265,11 @@ $("#editForm").onsubmit = async e => {
   const ts = new Date($("#editTime").value).getTime();
   if (!Number.isFinite(ts)) { $("#editWx").textContent = "시각을 다시 골라 주세요."; return; }
   if (ts > Date.now() + 60000) { $("#editWx").textContent = "앞으로의 시각은 기록할 수 없어요."; return; }
+  const indoor = ed.place === "in" ? readIndoor() : null;
+  if (indoor === undefined) { $("#editWx").textContent = "실내 수치를 확인해 주세요 (기온 −10~45, 습도 0~100, 초미세먼지 0~999)."; return; }
   const hourChanged = Math.floor(ts / 3600000) !== Math.floor(ev.ts / 3600000);
   ev.ts = ts; ev.puffs = ed.puffs; ev.tags = ed.tags; ev.note = $("#editNote").value.trim().slice(0, 300);
+  ev.place = ed.place; ev.indoor = indoor;
   if (ed.isNew) {
     const f = fallbackLoc();
     ev.loc = f ? { lat: f.lat, lon: f.lon, place: f.place || null, src: "assumed" } : null;
@@ -327,10 +363,21 @@ function renderStats() {
   $("#blocks").innerHTML = tod.blocks.map((b, i) => `<div class="${i === 0 && b.share >= 0.15 ? "night" : ""}"><b>${Math.round(b.share * 100)}%</b>${b.name}</div>`).join("");
   barChart($("#hourChart"), tod.hours.map((v, h) => ({ label: `${h}시`, value: v, alt: h < 6, tip: `${h}시대 · ${v}회` })), { height: 160, fmt: v => String(v), every: 6 });
 
-  const daysWx = days.map(d => { const l = locsCache.get(d.date); const rec = l && S.daily.get(`${d.date}@${l.key}`); return { ...d, wx: rec || null }; });
+  const ps2 = A.placeSplit(S.events);
+  $("#placeBlocks").innerHTML = ps2.rows.filter(r => r.key !== null || r.sum > 0).map(r => `<div><b>${Math.round(r.share * 100)}%</b>${esc(r.key === "move" ? "드나든 직후" : r.name)}<br><span class="num">${r.sum}회</span></div>`).join("");
+  const ins = A.indoorStats(S.events);
+  $("#indoorStats").innerHTML = ins.length
+    ? ins.map(s => `<div class="wxsec"><h3>${esc(s.title)} <small>(수치를 적은 ${s.n}회)</small></h3>${s.rows.map(r => `<div class="inrow"><span>${esc(r.name)}</span><span class="num">${r.sum}회</span></div>`).join("")}</div>`).join("")
+    : `<p class="sub">실내에서 쓸 때 기록을 눌러 실내 기온·습도·초미세먼지를 적어 두면 여기에 어떤 실내 환경에서 많이 썼는지 나와요.</p>`;
+
+  // 날씨 비교: 전체 / 실외에서 쓴 횟수만 / 실내에서 쓴 횟수만 (0회 날 포함, 기간은 같음)
+  const pick = S.wxFilter === "out" ? S.events.filter(e => e.place === "out" || e.place === "move") : S.wxFilter === "in" ? S.events.filter(e => e.place === "in") : S.events;
+  const fdays = S.wxFilter === "all" ? days : A.dailyCounts(pick, t, days[0].date);
+  const daysWx = fdays.map(d => { const l = locsCache.get(d.date); const rec = l && S.daily.get(`${d.date}@${l.key}`); return { ...d, wx: rec || null }; });
   const wc = A.weatherCompare(daysWx);
   const syncing = S.syncing ? " · 날씨 기록 가져오는 중…" : "";
-  $("#wxLine").textContent = `날씨를 아는 ${wc.n}일 / 전체 ${days.length}일${syncing}${S.syncNote ? " · " + S.syncNote : ""}`;
+  const fnote = S.wxFilter === "out" ? ` · 실외·드나든 직후 ${pick.length}건만 셈` : S.wxFilter === "in" ? ` · 실내 ${pick.length}건만 셈` : "";
+  $("#wxLine").textContent = `날씨를 아는 ${wc.n}일 / 전체 ${days.length}일${fnote}${syncing}${S.syncNote ? " · " + S.syncNote : ""}`;
   if (!wc.n) {
     $("#wxInsight").innerHTML = `<div class="insight"><span>${fallbackLoc() || S.events.some(e => e.loc) ? (navigator.onLine ? "날씨 기록을 가져오는 중이에요." : "인터넷이 연결되면 날씨 기록을 가져와요.") : "위치를 알 수 없어 날씨를 비교할 수 없어요. 설정에서 위치를 허용하거나 기본 지역을 정해 주세요."}</span></div>`;
     $("#wxSections").innerHTML = "";
@@ -413,6 +460,14 @@ $("#moreBtn").onclick = () => { S.shown += 14; renderLog(); };
 $("#recent").onclick = e => { const b = e.target.closest("[data-id]"); if (!b) return; const ev = S.events.find(x => x.id === b.dataset.id); if (ev) openEdit(ev, false); };
 $("#justCard").onclick = e => { const b = e.target.closest("[data-edit]"); if (!b) return; const ev = S.events.find(x => x.id === b.dataset.edit); if (ev) openEdit(ev, false); };
 document.querySelectorAll(".tabs button").forEach(b => { b.onclick = () => switchView(b.dataset.view); });
+document.querySelectorAll("[data-wxf]").forEach(b => { b.onclick = () => { S.wxFilter = b.dataset.wxf; document.querySelectorAll("[data-wxf]").forEach(x => x.setAttribute("aria-pressed", x === b)); renderStats(); }; });
+function paintPlaceSeg() { document.querySelectorAll("#placeSeg [data-place]").forEach(x => x.setAttribute("aria-pressed", x.dataset.place === S.meta.place)); }
+$("#placeSeg").onclick = async e => {
+  const b = e.target.closest("[data-place]"); if (!b) return;
+  const k = b.dataset.place;
+  await setMeta("place", S.meta.place === k ? null : k);
+  paintPlaceSeg();
+};
 document.querySelectorAll("[data-period]").forEach(b => { b.onclick = () => { S.period = b.dataset.period; document.querySelectorAll("[data-period]").forEach(x => x.setAttribute("aria-pressed", x === b)); renderStats(); }; });
 window.addEventListener("online", () => { backfill(); scheduleSync(); });
 document.addEventListener("visibilitychange", () => { if (!document.hidden) { renderAll(); backfill(); scheduleSync(); } });
@@ -426,7 +481,8 @@ function renderAll() { renderLog(); renderStats(); if (S.view === "settings") re
     const [events, daily] = await Promise.all([store.all("events"), store.all("daily")]);
     S.events = events; sortEvents();
     daily.forEach(r => S.daily.set(r.key, r));
-    for (const k of ["lastLoc", "manualLoc", "lastBackup"]) S.meta[k] = await store.get("meta", k);
+    for (const k of ["lastLoc", "manualLoc", "lastBackup", "place"]) S.meta[k] = await store.get("meta", k);
+    paintPlaceSeg();
   } catch {
     $("#todayLine").textContent = "이 브라우저에서는 기록을 저장할 수 없어요 (개인정보 보호 모드인지 확인해 주세요).";
     $("#pressBtn").disabled = true; return;

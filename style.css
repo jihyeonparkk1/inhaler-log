@@ -43,6 +43,20 @@ input[type=search],input[type=datetime-local],textarea{width:100%;background:var
 textarea{resize:vertical}
 .label{font-size:.78rem;color:var(--muted);font-weight:600;letter-spacing:.03em}
 
+/* 실내·실외 */
+.placebar{display:flex;flex-direction:column;align-items:center;gap:6px}
+.seg.place-seg{width:100%;max-width:360px;display:flex}
+.seg.place-seg button{flex:1;padding:10px 6px;font-size:.92rem}
+.seg.place-seg button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);font-weight:700}
+.pill.place{background:var(--soft);border-color:transparent;font-weight:600}
+fieldset.indoor{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:0;display:flex;flex-direction:column;gap:8px}
+fieldset.indoor legend{padding:0 4px}
+.indoor-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.indoor-grid label{display:flex;flex-direction:column;gap:3px;font-size:.8rem;color:var(--muted);min-width:0}
+.indoor-grid span{display:flex;align-items:center;gap:4px;color:var(--ink)}
+.indoor-grid input{width:100%;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px}
+.inrow{display:flex;justify-content:space-between;font-size:.86rem;padding:3px 0}
+
 /* 기록 버튼 */
 .press-wrap{display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px 0 4px}
 .press{width:min(62vw,240px);aspect-ratio:1;max-width:100%;border-radius:50%;border:0;background:var(--accent);color:var(--accent-ink);

@@ -15,12 +15,39 @@ function stats(values) {
   return { n, sum, avg: n ? sum / n : 0 };
 }
 
-/** 첫 기록일부터 today까지 모든 날짜. 기록 없는 날은 0회(앱으로 매번 기록한다는 전제). */
-export function dailyCounts(events, today) {
-  if (!events.length) return [];
-  const map = new Map(); let first = today;
-  for (const ev of events) { const d = evDate(ev); if (d < first) first = d; map.set(d, (map.get(d) || 0) + evPuffs(ev)); }
-  return dayList(first, today).map(date => ({ date, puffs: map.get(date) || 0 }));
+/** 첫 기록일부터 today까지 모든 날짜. 기록 없는 날은 0회(앱으로 매번 기록한다는 전제).
+ *  first를 주면 그날부터 센다 — 실내/실외만 골라 셀 때도 전체 기록의 첫날 기준으로 0회 날을 채우려고. */
+export function dailyCounts(events, today, first) {
+  if (!events.length && !first) return [];
+  const map = new Map(); let start = first || today;
+  for (const ev of events) { const d = evDate(ev); if (!first && d < start) start = d; map.set(d, (map.get(d) || 0) + evPuffs(ev)); }
+  return dayList(start, today).map(date => ({ date, puffs: map.get(date) || 0 }));
+}
+
+/* 실내·실외 */
+export const PLACES = [["in", "실내"], ["out", "실외"], ["move", "나가거나 들어온 직후"]];
+export function placeSplit(events) {
+  const total = events.reduce((a, e) => a + evPuffs(e), 0);
+  const rows = [...PLACES, [null, "선택 안 함"]].map(([k, name]) => {
+    const sum = events.filter(e => (e.place || null) === k).reduce((a, e) => a + evPuffs(e), 0);
+    return { key: k, name, sum, share: total ? sum / total : 0 };
+  });
+  return { total, rows };
+}
+
+/** 사용자가 적은 실내 수치(기온·습도·PM2.5)별 흡입 횟수. 기준 비교가 없는 단순 분포. */
+export function indoorStats(events) {
+  const ins = events.filter(e => e.place === "in" && e.indoor);
+  const bands = (title, key, defs) => ({
+    title,
+    n: ins.filter(e => e.indoor[key] != null).reduce((a, e) => a + evPuffs(e), 0),
+    rows: defs.map(([name, test]) => ({ name, sum: ins.filter(e => e.indoor[key] != null && test(e.indoor[key])).reduce((a, e) => a + evPuffs(e), 0) })),
+  });
+  return [
+    bands("실내 기온", "t", [["18°C 미만", v => v < 18], ["18–24°C", v => v >= 18 && v <= 24], ["24°C 넘음", v => v > 24]]),
+    bands("실내 습도", "rh", [["건조 (40% 미만)", v => v < 40], ["적정 (40–60%)", v => v >= 40 && v <= 60], ["습함 (60% 넘음)", v => v > 60]]),
+    bands("실내 초미세먼지", "pm25", ["좋음", "보통", "나쁨", "매우나쁨"].map(g => [g, v => pm25Grade(v) === g])),
+  ].filter(s => s.n > 0);
 }
 
 export function tiles(days, today) {

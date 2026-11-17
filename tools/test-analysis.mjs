@@ -68,3 +68,16 @@ assert.equal(locs.get("2026-01-31").key, A.locKey(37.57, 126.98));
 assert.equal(locs.get("2026-02-03").key, A.locKey(35.68, 139.69));
 
 console.log("analysis tests: all passed");
+
+// 9) 실내·실외 비율, 실내 수치 분포, 필터한 하루 횟수(첫날은 전체 기준)
+const pe = [ev("2026-04-01", 9, 1, { place: "in", indoor: { t: 22, rh: 35, pm25: 40 } }), ev("2026-04-01", 18, 2, { place: "out" }), ev("2026-04-03", 7, 1, { place: "in", indoor: { t: 17, rh: 65, pm25: null } }), ev("2026-04-03", 8)];
+const sp = A.placeSplit(pe);
+assert.equal(sp.total, 5); assert.equal(sp.rows.find(r => r.key === "in").sum, 2); assert.equal(sp.rows.find(r => r.key === "out").sum, 2); assert.equal(sp.rows.find(r => r.key === null).sum, 1);
+const is = A.indoorStats(pe);
+assert.equal(is.find(s => s.title === "실내 습도").rows[0].sum, 1);   // 35% 건조
+assert.equal(is.find(s => s.title === "실내 습도").rows[2].sum, 1);   // 65% 습함
+assert.equal(is.find(s => s.title === "실내 초미세먼지").n, 1);
+const outDays = A.dailyCounts(pe.filter(e => e.place === "out"), "2026-04-03", "2026-04-01");
+assert.deepEqual(outDays.map(d => d.puffs), [2, 0, 0]);
+assert.deepEqual(A.dailyCounts([], "2026-04-02", "2026-04-01").map(d => d.puffs), [0, 0]);
+console.log("place tests: all passed");
