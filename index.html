@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>흡입기 기록</title>
+<meta name="description" content="흡입기를 쓸 때마다 시각·위치·날씨·미세먼지를 함께 저장하고 패턴을 분석합니다.">
+<meta name="theme-color" content="#f3f6f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1519" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="흡입기 기록">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<main>
+  <!-- 기록 -->
+  <section class="view" id="view-log" aria-label="기록">
+    <header class="top">
+      <h1>흡입기 기록</h1>
+      <p class="sub" id="todayLine">오늘 기록을 불러오는 중…</p>
+    </header>
+
+    <div class="press-wrap">
+      <button class="press" id="pressBtn" type="button" aria-describedby="pressHint">
+        <span class="press-plus" aria-hidden="true">+1</span>
+        <span class="press-label">흡입 기록</span>
+      </button>
+      <p class="hint" id="pressHint">누르는 순간의 시각·위치·날씨·미세먼지가 함께 저장돼요</p>
+    </div>
+
+    <div class="card just" id="justCard" hidden></div>
+
+    <div class="row between">
+      <h2>최근 기록</h2>
+      <button class="ghost small" id="addPastBtn" type="button">시간 정해서 추가</button>
+    </div>
+    <div id="recent" class="recent"></div>
+    <button class="ghost wide" id="moreBtn" type="button" hidden>더 보기</button>
+  </section>
+
+  <!-- 분석 -->
+  <section class="view" id="view-stats" aria-label="분석" hidden>
+    <header class="top"><h1>분석</h1><p class="sub" id="statsLine"></p></header>
+    <div id="statsEmpty" class="card empty" hidden>
+      <p>기록이 쌓이면 여기에 월·분기·연 평균, 시간대, 계절, 날씨·미세먼지별 패턴이 나타나요.</p>
+      <p class="sub">기록 탭에서 흡입할 때마다 버튼을 눌러 주세요. 버튼을 누르지 않은 날은 0회로 계산해요.</p>
+    </div>
+    <div id="statsBody">
+      <div class="tiles" id="tiles"></div>
+      <div class="card control" id="controlCard"></div>
+
+      <section class="card">
+        <div class="row between wrap">
+          <div><h2>기간별 하루 평균</h2><p class="sub">첫 기록일부터 기록 안 한 날은 0회로 포함</p></div>
+          <div class="seg" role="group" aria-label="기간 단위">
+            <button type="button" data-period="month" aria-pressed="true">월</button>
+            <button type="button" data-period="quarter" aria-pressed="false">분기</button>
+            <button type="button" data-period="year" aria-pressed="false">년</button>
+          </div>
+        </div>
+        <div class="chart" id="periodChart"></div>
+      </section>
+
+      <section class="card">
+        <div><h2>시간대</h2><p class="sub">몇 시에 흡입기를 썼는지 (전체 기간 합계)</p></div>
+        <div class="blocks" id="blocks"></div>
+        <div class="chart" id="hourChart"></div>
+      </section>
+
+      <section class="card">
+        <div><h2>날씨·미세먼지</h2><p class="sub" id="wxLine">그날 위치의 하루 날씨와 사용량을 비교해요</p></div>
+        <div id="wxInsight"></div>
+        <div id="wxSections"></div>
+      </section>
+
+      <section class="card">
+        <div><h2>계절</h2><p class="sub">봄 3–5월 · 여름 6–8월 · 가을 9–11월 · 겨울 12–2월</p></div>
+        <div id="seasonInsight"></div>
+        <div class="div-list" id="seasonRows"></div>
+      </section>
+
+      <section class="card">
+        <div><h2>요일</h2><p class="sub">요일별 하루 평균</p></div>
+        <div class="chart" id="weekChart"></div>
+      </section>
+
+      <section class="card" id="tagCard">
+        <div><h2>함께 적은 상황</h2><p class="sub">기록에 붙인 상황 태그 횟수</p></div>
+        <div id="tagRows"></div>
+      </section>
+      <p class="foot">함께 나타난 경향일 뿐 원인을 뜻하지 않아요. 항목에 기록이 3일 미만이면 흐리게 표시하고 결론에서 뺍니다. 치료 결정은 담당 의사와 상의하세요.</p>
+    </div>
+  </section>
+
+  <!-- 설정 -->
+  <section class="view" id="view-settings" aria-label="설정" hidden>
+    <header class="top"><h1>설정</h1></header>
+
+    <section class="card">
+      <h2>위치</h2>
+      <p class="sub" id="locStatus">확인 중…</p>
+      <div class="row wrap">
+        <button class="ghost" id="locCheckBtn" type="button">지금 위치 확인</button>
+      </div>
+      <p class="sub">위치 권한을 허용하지 않았거나 GPS가 안 잡힐 때 쓸 기본 지역을 정할 수 있어요.</p>
+      <form class="row" id="placeForm">
+        <input id="placeInput" type="search" placeholder="도시 이름 (예: 서울, Tokyo)" autocomplete="off" enterkeyhint="search">
+        <button class="ghost" type="submit">찾기</button>
+      </form>
+      <div id="placeResults" class="list"></div>
+      <p class="sub" id="manualLine"></p>
+    </section>
+
+    <section class="card">
+      <h2>백업</h2>
+      <p class="sub">기록은 이 휴대폰 안에만 저장돼요. 휴대폰을 바꾸거나 앱을 지우기 전에 백업 파일을 만들어 두세요.</p>
+      <div class="row wrap">
+        <button class="primary" id="exportBtn" type="button">백업 파일 만들기</button>
+        <label class="ghost filebtn" for="importInput">백업 불러오기</label>
+        <input id="importInput" type="file" accept="application/json,.json" hidden>
+      </div>
+      <p class="sub" id="backupLine"></p>
+      <p class="sub" id="persistLine"></p>
+    </section>
+
+    <section class="card" id="installCard" hidden>
+      <h2>홈 화면에 추가</h2>
+      <p>Safari 아래쪽 <b>공유</b> 버튼 → <b>홈 화면에 추가</b>를 누르면 앱처럼 열려요. 홈 화면 앱으로 써야 기록이 오래 안전하게 남아요.</p>
+    </section>
+
+    <section class="card">
+      <h2>정보</h2>
+      <p class="sub">날씨·대기질: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> (CC BY 4.0) · 지명: BigDataCloud, <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a>. 이 서비스들에는 좌표만 보내고 다른 정보는 보내지 않아요.</p>
+      <p class="sub">미세먼지 등급은 한국 환경부 기준(PM10 30/80/150, PM2.5 15/35/75 ㎍/㎥)이에요. 대기질은 위성·모델 추정치라 측정소 수치와 다를 수 있어요. 꽃가루는 유럽 지역에서만 나와요.</p>
+      <p class="sub" id="versionLine"></p>
+    </section>
+  </section>
+</main>
+
+<nav class="tabs" aria-label="화면">
+  <button type="button" data-view="log" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>기록</span></button>
+  <button type="button" data-view="stats"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"/></svg><span>분석</span></button>
+  <button type="button" data-view="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg><span>설정</span></button>
+</nav>
+
+<dialog id="editDlg">
+  <form method="dialog" id="editForm">
+    <h2 id="editTitle">기록 수정</h2>
+    <label class="label" for="editTime">시각</label>
+    <input type="datetime-local" id="editTime" required>
+    <div class="label">흡입 횟수</div>
+    <div class="stepper">
+      <button type="button" id="editMinus" aria-label="한 번 빼기">−</button>
+      <output id="editPuffs">1</output>
+      <button type="button" id="editPlus" aria-label="한 번 더하기">+</button>
+    </div>
+    <div class="label">상황 (선택)</div>
+    <div class="chips" id="editTags"></div>
+    <label class="label" for="editNote">메모</label>
+    <textarea id="editNote" rows="2" maxlength="300" placeholder="예: 계단 오른 뒤, 새벽에 기침"></textarea>
+    <p class="sub" id="editWx"></p>
+    <div class="row between">
+      <button type="button" class="ghost danger" id="editDelete">삭제</button>
+      <div class="row">
+        <button type="button" class="ghost" id="editCancel">취소</button>
+        <button type="submit" class="primary" id="editSave">저장</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

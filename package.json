@@ -1,0 +1,6 @@
+{
+  "name": "inhaler-log",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node tools/test-analysis.mjs", "icons": "node tools/make-icons.mjs" }
+}
