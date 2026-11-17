@@ -2,7 +2,7 @@ import { store } from "./store.js";
 import * as A from "./analysis.js";
 import { currentWeather, weatherAt, dailyRange, searchPlace, placeName } from "./weather.js";
 
-const VERSION = "1.2.0";
+const VERSION = "1.3.0";
 const TAGS = [["exercise", "운동"], ["cold", "감기·기침"], ["night", "밤에 깸"], ["smoke", "담배 연기"], ["dust", "먼지·청소"],
   ["pollen", "꽃가루"], ["pet", "반려동물"], ["chill", "찬 공기"], ["stress", "스트레스"], ["smell", "강한 냄새"],
   ["cooking", "요리 연기"], ["mold", "곰팡이"], ["hvac", "에어컨·난방"]];
@@ -158,13 +158,16 @@ function placePills(ev) {
     if (i.pm25 != null) p.push(`초미세 ${i.pm25} ${A.pm25Grade(i.pm25)}`);
     if (p.length) s += `<span class="pill">실내 ${p.join(" · ")}</span>`;
   }
-  if (ev.place === "in" && !(i && i.rh != null)) {
-    const est = A.estIndoorRh(ev.wx?.t, ev.wx?.rh, indoorT());
-    if (est != null) s += `<span class="pill${est < 30 ? " bad" : ""}" title="바깥 기온·습도와 실내 ${indoorT()}°C로 계산한 값">실내 습도 약 ${est}% (추정)</span>`;
+  if (ev.place === "in" && !(i && i.t != null && i.rh != null)) {
+    const v = A.indoorOf(ev, humOffset());
+    const p = [];
+    if (v.tEst) p.push(`약 ${v.t}°C`);
+    if (v.rhEst) p.push(`습도 약 ${v.rh}%`);
+    s += `<span class="pill${v.rhEst && v.rh < 30 ? " bad" : ""}" title="그 달 한국 가정의 평균적인 실내값${humOffset() ? `, 우리 집 보정 ${humOffset() > 0 ? "+" : ""}${humOffset()}%p` : ""}">실내 ${p.join(" · ")} (평균값)</span>`;
   }
   return s;
 }
-const indoorT = () => (Number.isFinite(S.meta.indoorTemp) ? S.meta.indoorTemp : A.DEFAULT_INDOOR_T);
+const humOffset = () => A.humidityOffset(S.events).offset;
 function wxPills(ev) {
   return placePills(ev) + (ev.place === "in" ? `<span class="pill status">바깥</span>` : "") + outdoorPills(ev);
 }
@@ -228,9 +231,9 @@ function openEdit(ev, isNew) {
   S.editing = { ev, isNew, puffs: A.evPuffs(ev), tags: [...(ev.tags || [])], place: isNew ? (S.meta.place || null) : (ev.place || null), delArm: false };
   const i = ev.indoor || {};
   $("#inT").value = i.t ?? ""; $("#inRh").value = i.rh ?? ""; $("#inPm").value = i.pm25 ?? "";
-  const est = A.estIndoorRh(ev.wx?.t, ev.wx?.rh, indoorT());
-  $("#inRh").placeholder = est != null ? `추정 ${est}` : "";
-  $("#inT").placeholder = String(indoorT());
+  const ty = A.indoorOf({ ts: ev.ts }, humOffset());
+  $("#inRh").placeholder = `평균 ${ty.rh}`;
+  $("#inT").placeholder = `평균 ${ty.t}`;
   $("#inLast").hidden = !lastIndoor(ev.id);
   $("#editTitle").textContent = isNew ? "지난 기록 추가" : "기록 수정";
   $("#editTime").value = toLocalInput(ev.ts);
@@ -373,16 +376,16 @@ function renderStats() {
 
   const ps2 = A.placeSplit(S.events);
   $("#placeBlocks").innerHTML = ps2.rows.filter(r => r.key !== null || r.sum > 0).map(r => `<div><b>${Math.round(r.share * 100)}%</b>${esc(r.key === "move" ? "드나든 직후" : r.name)}<br><span class="num">${r.sum}회</span></div>`).join("");
-  const ins = A.indoorStats(S.events, indoorT());
+  const ins = A.indoorStats(S.events, humOffset());
   $("#indoorStats").innerHTML = ins.length
-    ? ins.map(s => `<div class="wxsec"><h3>${esc(s.title)} <small>(${s.estimated ? `직접 적은 ${s.measured}회 · 바깥 날씨로 추정 ${s.estimated}회` : `직접 적은 ${s.n}회`})</small></h3>${s.rows.map(r => `<div class="inrow"><span>${esc(r.name)}</span><span class="num">${r.sum}회</span></div>`).join("")}</div>`).join("")
+    ? ins.map(s => `<div class="wxsec"><h3>${esc(s.title)} <small>(${s.estimated ? `직접 적은 ${s.measured}회 · 그 달 평균값 ${s.estimated}회` : `직접 적은 ${s.n}회`})</small></h3>${s.rows.map(r => `<div class="inrow"><span>${esc(r.name)}</span><span class="num">${r.sum}회</span></div>`).join("")}</div>`).join("")
     : `<p class="sub">실내에서 쓸 때 기록을 눌러 실내 기온·습도·초미세먼지를 적어 두면 여기에 어떤 실내 환경에서 많이 썼는지 나와요.</p>`;
 
   // 날씨 비교: 전체 / 실외에서 쓴 횟수만 / 실내에서 쓴 횟수만 (0회 날 포함, 기간은 같음)
   const pick = S.wxFilter === "out" ? S.events.filter(e => e.place === "out" || e.place === "move") : S.wxFilter === "in" ? S.events.filter(e => e.place === "in") : S.events;
   const fdays = S.wxFilter === "all" ? days : A.dailyCounts(pick, t, days[0].date);
   const daysWx = fdays.map(d => { const l = locsCache.get(d.date); const rec = l && S.daily.get(`${d.date}@${l.key}`); return { ...d, wx: rec || null }; });
-  const wc = A.weatherCompare(daysWx, indoorT());
+  const wc = A.weatherCompare(daysWx);
   const syncing = S.syncing ? " · 날씨 기록 가져오는 중…" : "";
   const fnote = S.wxFilter === "out" ? ` · 실외·드나든 직후 ${pick.length}건만 셈` : S.wxFilter === "in" ? ` · 실내 ${pick.length}건만 셈` : "";
   $("#wxLine").textContent = `날씨를 아는 ${wc.n}일 / 전체 ${days.length}일${fnote}${syncing}${S.syncNote ? " · " + S.syncNote : ""}`;
@@ -420,9 +423,12 @@ async function renderSettings() {
   const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
   $("#installCard").hidden = !!standalone;
   $("#versionLine").textContent = `버전 ${VERSION}`;
-  if (document.activeElement !== $("#indoorTempInput")) $("#indoorTempInput").value = indoorT();
-  const sample = A.estIndoorRh(0, 60, indoorT());
-  $("#indoorTempLine").textContent = `예: 바깥 0°C·습도 60%일 때 실내 습도는 약 ${sample}%로 추정해요.`;
+  const ho = A.humidityOffset(S.events);
+  const cur = new Date().getMonth();
+  $("#indoorTable").innerHTML = A.TYPICAL_INDOOR.map(([t, rh], m) => `<div class="${m === cur ? "cur" : ""}"><b>${m + 1}월</b><span>${t}°C</span><span>${Math.max(10, Math.min(90, rh + ho.offset))}%</span></div>`).join("");
+  $("#indoorOffsetLine").textContent = ho.n
+    ? `습도계로 적은 ${ho.n}번의 값을 보면 우리 집은 ${ho.offset === 0 ? "평균과 비슷해요" : `평균보다 ${Math.abs(ho.offset)}%p ${ho.offset > 0 ? "습해요" : "건조해요"}`}. 위 표에 반영했어요.`
+    : "실내 기록에 습도계 값을 한 번이라도 적으면, 우리 집이 평균보다 습한지 건조한지 계산해서 표를 맞춰요.";
 }
 $("#locCheckBtn").onclick = async () => { $("#locStatus").textContent = "위치 확인 중…"; const g = await gps(); if (g) { await setMeta("lastLoc", g); const p = await placeName(g.lat, g.lon); if (p) await setMeta("lastLoc", { ...g, place: p }); backfill(); scheduleSync(); } renderSettings(); };
 $("#placeForm").onsubmit = async e => {
@@ -436,13 +442,8 @@ $("#placeForm").onsubmit = async e => {
 $("#placeResults").onclick = async e => { const b = e.target.closest("[data-i]"); if (!b) return; await setMeta("manualLoc", S.placeHits[+b.dataset.i]); $("#placeResults").innerHTML = ""; $("#placeInput").value = ""; renderSettings(); backfill(); scheduleSync(); toast("기본 지역을 정했어요"); };
 $("#manualLine").onclick = async e => { if (e.target.id === "clearManual") { await setMeta("manualLoc", null); renderSettings(); } };
 
-$("#indoorTempInput").onchange = async e => {
-  const v = Number(e.target.value);
-  if (!Number.isFinite(v) || v < 15 || v > 30) { e.target.value = indoorT(); toast("15~30°C 사이로 적어 주세요"); return; }
-  await setMeta("indoorTemp", Math.round(v * 2) / 2); renderSettings(); renderLog(); toast(`실내 온도를 ${indoorT()}°C로 정했어요`);
-};
 $("#exportBtn").onclick = async () => {
-  const data = { app: "inhaler-log", version: 1, exportedAt: new Date().toISOString(), events: S.events, meta: { manualLoc: S.meta.manualLoc || null, indoorTemp: S.meta.indoorTemp ?? null } };
+  const data = { app: "inhaler-log", version: 1, exportedAt: new Date().toISOString(), events: S.events, meta: { manualLoc: S.meta.manualLoc || null } };
   const name = `흡입기기록-${today()}.json`;
   const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
   const file = new File([blob], name, { type: "application/json" });
@@ -497,7 +498,7 @@ function renderAll() { renderLog(); renderStats(); if (S.view === "settings") re
     const [events, daily] = await Promise.all([store.all("events"), store.all("daily")]);
     S.events = events; sortEvents();
     daily.forEach(r => S.daily.set(r.key, r));
-    for (const k of ["lastLoc", "manualLoc", "lastBackup", "place", "indoorTemp"]) S.meta[k] = await store.get("meta", k);
+    for (const k of ["lastLoc", "manualLoc", "lastBackup", "place"]) S.meta[k] = await store.get("meta", k);
     paintPlaceSeg();
   } catch {
     $("#todayLine").textContent = "이 브라우저에서는 기록을 저장할 수 없어요 (개인정보 보호 모드인지 확인해 주세요).";

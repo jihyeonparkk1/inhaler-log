@@ -55,6 +55,11 @@ fieldset.indoor legend{padding:0 4px}
 .indoor-grid label{display:flex;flex-direction:column;gap:3px;font-size:.8rem;color:var(--muted);min-width:0}
 .indoor-grid span{display:flex;align-items:center;gap:4px;color:var(--ink)}
 .indoor-grid input{width:100%;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px}
+.monthtable{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+@media (max-width:420px){.monthtable{grid-template-columns:repeat(4,1fr)}}
+.monthtable div{display:flex;flex-direction:column;align-items:center;background:var(--soft);border-radius:10px;padding:6px 2px;font-size:.78rem;font-variant-numeric:tabular-nums}
+.monthtable div.cur{outline:2px solid var(--accent)}
+.monthtable b{font-size:.8rem}
 .inrow{display:flex;justify-content:space-between;font-size:.86rem;padding:3px 0}
 
 /* 기록 버튼 */

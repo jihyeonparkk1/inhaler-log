@@ -140,10 +140,10 @@
     </section>
 
     <section class="card">
-      <h2>실내 습도 추정</h2>
-      <p class="sub">실내 센서가 없어도, 바깥 공기의 수분량이 실내 온도로 데워졌을 때의 습도를 계산해 실내 기록에 붙여요. 겨울 난방 때 실내가 얼마나 건조한지 알 수 있어요. 가습기·빨래·요리로 생기는 수분은 반영하지 못하고, 직접 적은 습도가 있으면 그 값을 써요.</p>
-      <label class="row" for="indoorTempInput"><span>평소 실내 온도</span><input id="indoorTempInput" type="number" inputmode="decimal" step="0.5" min="15" max="30" style="width:84px"><span>°C</span></label>
-      <p class="sub" id="indoorTempLine"></p>
+      <h2>실내 평균값</h2>
+      <p class="sub">실내 기록에 습도계 값을 적지 않으면, 그 달 한국 가정의 대략적인 실내 기온·습도를 대신 붙여요. 정확한 값이 아니라 “그 달은 보통 이 정도”라는 기준이에요. 직접 적은 값이 있으면 그 값을 써요.</p>
+      <div class="monthtable" id="indoorTable"></div>
+      <p class="sub" id="indoorOffsetLine"></p>
     </section>
 
     <section class="card">
@@ -194,9 +194,9 @@
     <fieldset class="indoor" id="indoorBox" hidden>
       <legend class="label">실내 수치 (선택 · 공기청정기·온습도계 화면을 보고 적어 주세요)</legend>
       <div class="indoor-grid">
-        <label>기온<span><input type="number" id="inT" inputmode="decimal" step="0.5" min="-10" max="45">°C</span></label>
-        <label>습도<span><input type="number" id="inRh" inputmode="numeric" step="1" min="0" max="100">%</span></label>
-        <label>초미세먼지<span><input type="number" id="inPm" inputmode="numeric" step="1" min="0" max="999">㎍/㎥</span></label>
+        <label>기온<span><input type="number" id="inT" inputmode="decimal" step="any" min="-10" max="45">°C</span></label>
+        <label>습도<span><input type="number" id="inRh" inputmode="decimal" step="any" min="0" max="100">%</span></label>
+        <label>초미세먼지<span><input type="number" id="inPm" inputmode="decimal" step="any" min="0" max="999">㎍/㎥</span></label>
       </div>
       <button type="button" class="ghost small" id="inLast" hidden>지난번 실내 수치 넣기</button>
     </fieldset>

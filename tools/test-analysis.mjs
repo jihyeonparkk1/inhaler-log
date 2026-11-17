@@ -82,22 +82,24 @@ assert.deepEqual(outDays.map(d => d.puffs), [2, 0, 0]);
 assert.deepEqual(A.dailyCounts([], "2026-04-02", "2026-04-01").map(d => d.puffs), [0, 0]);
 console.log("place tests: all passed");
 
-// 10) 실내 습도 추정 (Magnus): 바깥 0°C·60% → 실내 22°C에서 약 14%
-assert.equal(A.estIndoorRh(0, 60, 22), 14);
-assert.equal(A.estIndoorRh(-10, 70, 22), 8);       // 한겨울 → 매우 건조
-assert.equal(A.estIndoorRh(15, 80, 22), 52);
-assert.equal(A.estIndoorRh(30, 80, 22), 65);       // 바깥이 더 더우면(냉방) 65%로 자름
-assert.equal(A.estIndoorRh(24, 50, 22), 50);
-assert.equal(A.estIndoorRh(null, 50), null);
-// 실내 기록: 직접 적은 습도 우선, 없으면 추정
-const ie = [ev("2026-01-10", 9, 1, { place: "in", indoor: { t: 21, rh: 45, pm25: null }, wx: { t: 0, rh: 60 } }), ev("2026-01-10", 21, 2, { place: "in", wx: { t: 0, rh: 60 } }), ev("2026-01-11", 9, 1, { place: "out", wx: { t: 0, rh: 60 } })];
-const irh = A.indoorStats(ie).find(s => s.title === "실내 습도");
-assert.equal(irh.measured, 1); assert.equal(irh.estimated, 2);
-assert.equal(irh.rows.find(r => r.name.startsWith("매우 건조")).sum, 2);
-assert.equal(irh.rows.find(r => r.name.startsWith("적정")).sum, 1);
-// 날씨 비교에 실내 습도(추정) 구간 포함
-const wc2 = A.weatherCompare([{ date: "2026-01-10", puffs: 3, wx: { tmean: 0, tmin: -3, tmax: 3, rh: 60 } }, { date: "2026-05-10", puffs: 1, wx: { tmean: 18, tmin: 12, tmax: 24, rh: 70 } }]);
-const sec = wc2.sections.find(s => s.title.startsWith("실내 습도"));
-assert.equal(sec.rows.find(r => r.name.startsWith("매우 건조")).sum, 3);
-assert.equal(sec.rows.find(r => r.name.startsWith("적정")).sum, 1); // 18°C·70% → 22°C에서 약 55%
-console.log("indoor estimate tests: all passed");
+// 10) 실내 평균값: 11월 22°C·35%, 7월 26°C·62%
+assert.deepEqual(A.typicalIndoor(ts("2026-11-17", 9)), { t: 22, rh: 35 });
+assert.deepEqual(A.typicalIndoor(ts("2026-07-01", 9)), { t: 26, rh: 62 });
+// 직접 적은 값 우선, 없으면 평균값
+const evIn = ev("2026-11-17", 9, 1, { place: "in", indoor: { t: 25.7, rh: null, pm25: null } });
+assert.deepEqual(A.indoorOf(evIn), { t: 25.7, tEst: false, rh: 35, rhEst: true });
+// 우리 집 보정: 습도계 40%(평균 35%보다 +5) → 다른 실내 기록도 +5
+const evMeasured = ev("2026-11-16", 9, 1, { place: "in", indoor: { t: null, rh: 40, pm25: null } });
+const now = ts("2026-11-17", 12);
+assert.deepEqual(A.humidityOffset([evIn, evMeasured], now), { offset: 5, n: 1 });
+assert.equal(A.indoorOf(ev("2026-01-05", 9, 1, { place: "in" }), 5).rh, 35); // 1월 30% + 5
+assert.equal(A.humidityOffset([ev("2026-11-16", 9, 1, { place: "in", indoor: { rh: 80 } })], now).offset, 15); // 최대 ±15
+assert.equal(A.humidityOffset([ev("2026-01-01", 9, 1, { place: "in", indoor: { rh: 80 } })], now).n, 0);       // 90일 지난 값은 안 씀
+// 실내 통계: 평균값으로 채운 횟수와 직접 적은 횟수 구분
+const st2 = A.indoorStats([evIn, ev("2026-11-17", 21, 2, { place: "in" }), ev("2026-11-17", 22, 1, { place: "out" })]);
+const tSec = st2.find(s => s.title === "실내 기온"), hSec = st2.find(s => s.title === "실내 습도");
+assert.equal(tSec.measured, 1); assert.equal(tSec.estimated, 2);
+assert.equal(tSec.rows.find(r => r.name === "24°C 넘음").sum, 1);   // 25.7
+assert.equal(tSec.rows.find(r => r.name === "18–24°C").sum, 2);     // 평균 22
+assert.equal(hSec.estimated, 3); assert.equal(hSec.rows.find(r => r.name.startsWith("건조")).sum, 3); // 35%
+console.log("indoor average tests: all passed");

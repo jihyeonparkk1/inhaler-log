@@ -35,37 +35,45 @@ export function placeSplit(events) {
   return { total, rows };
 }
 
-/* 실내 습도 추정: 바깥 공기의 수증기량은 그대로인 채 실내 온도로 데워진다고 보고 상대습도를 다시 계산한다.
- * 포화수증기압은 Magnus 식(hPa). 바깥이 실내보다 덥거나 같으면(냉방·환기) 이 계산이 맞지 않으므로
- * 바깥 습도를 쓰되 에어컨 제습을 감안해 65%로 자른다. 가습기·빨래·요리 수분은 반영하지 못한다. */
-export const satVp = t => 6.112 * Math.exp((17.62 * t) / (243.12 + t));
-export const DEFAULT_INDOOR_T = 22;
-export function estIndoorRh(tOut, rhOut, tIn = DEFAULT_INDOOR_T) {
-  if (tOut == null || rhOut == null) return null;
-  if (tOut >= tIn) return Math.round(Math.min(rhOut, 65));
-  return Math.max(5, Math.min(100, Math.round((rhOut * satVp(tOut)) / satVp(tIn))));
+/* 실내 평균값: 한국 아파트의 달별 대략적인 실내 기온·습도(난방철 건조, 장마·냉방철 습함).
+ * 정확한 값이 아니라 "그 달 보통 이 정도"라는 기준이다. 사용자가 습도계 값을 적으면 그 차이만큼 보정한다. */
+export const TYPICAL_INDOOR = [ // [기온°C, 습도%] 1월~12월
+  [22, 30], [22, 32], [22, 38], [22, 42], [23, 48], [25, 58], [26, 62], [26, 62], [25, 55], [23, 45], [22, 35], [22, 32]];
+export function typicalIndoor(ts) { const [t, rh] = TYPICAL_INDOOR[new Date(ts).getMonth()]; return { t, rh }; }
+
+/** 습도계로 직접 적은 값과 그 달 평균값의 차이(최근 90일, 최대 ±15%p). 우리 집이 평균보다 습한지 건조한지. */
+export function humidityOffset(events, now = Date.now()) {
+  const d = events.filter(e => e.place === "in" && e.indoor && e.indoor.rh != null && now - e.ts < 90 * 864e5).map(e => e.indoor.rh - typicalIndoor(e.ts).rh);
+  if (!d.length) return { offset: 0, n: 0 };
+  const avg = d.reduce((a, b) => a + b, 0) / d.length;
+  return { offset: Math.round(Math.max(-15, Math.min(15, avg))), n: d.length };
+}
+/** 이 기록의 실내 기온·습도: 직접 적은 값이 있으면 그 값, 없으면 그 달 평균(+우리 집 보정). */
+export function indoorOf(e, offset = 0) {
+  const ty = typicalIndoor(e.ts), i = e.indoor || {};
+  return {
+    t: i.t != null ? i.t : ty.t, tEst: i.t == null,
+    rh: i.rh != null ? i.rh : Math.max(10, Math.min(90, ty.rh + offset)), rhEst: i.rh == null,
+  };
 }
 export const INDOOR_RH_BANDS = [["매우 건조 (30% 미만)", v => v < 30], ["건조 (30–40%)", v => v >= 30 && v < 40], ["적정 (40–60%)", v => v >= 40 && v <= 60], ["습함 (60% 넘음)", v => v > 60]];
 
-/** 실내 기록의 실내 수치별 흡입 횟수. 습도는 직접 적은 값이 없으면 바깥 날씨로 추정한 값을 쓴다. */
-export function indoorStats(events, tIn = DEFAULT_INDOOR_T) {
+/** 실내 기록의 실내 수치별 흡입 횟수. 기온·습도는 직접 적은 값이 없으면 그 달 평균값(습도는 우리 집 보정)을 쓴다. */
+export function indoorStats(events, offset = 0) {
   const ins = events.filter(e => e.place === "in");
   const sum = arr => arr.reduce((a, e) => a + evPuffs(e), 0);
-  const measured = (title, key, defs) => {
-    const has = ins.filter(e => e.indoor && e.indoor[key] != null);
-    return { title, n: sum(has), measured: sum(has), estimated: 0, rows: defs.map(([name, test]) => ({ name, sum: sum(has.filter(e => test(e.indoor[key]))) })) };
+  const filled = (title, key, estKey, defs) => {
+    const xs = ins.map(e => ({ e, v: indoorOf(e, offset) }));
+    return {
+      title, n: sum(ins), measured: sum(xs.filter(x => !x.v[estKey]).map(x => x.e)), estimated: sum(xs.filter(x => x.v[estKey]).map(x => x.e)),
+      rows: defs.map(([name, test]) => ({ name, sum: sum(xs.filter(x => test(x.v[key])).map(x => x.e)) })),
+    };
   };
-  const rhOf = e => (e.indoor && e.indoor.rh != null ? { v: e.indoor.rh, est: false } : (() => { const v = estIndoorRh(e.wx?.t, e.wx?.rh, tIn); return v == null ? null : { v, est: true }; })());
-  const withRh = ins.map(e => ({ e, r: rhOf(e) })).filter(x => x.r);
-  const rh = {
-    title: "실내 습도", n: sum(withRh.map(x => x.e)),
-    measured: sum(withRh.filter(x => !x.r.est).map(x => x.e)), estimated: sum(withRh.filter(x => x.r.est).map(x => x.e)),
-    rows: INDOOR_RH_BANDS.map(([name, test]) => ({ name, sum: sum(withRh.filter(x => test(x.r.v)).map(x => x.e)) })),
-  };
+  const has = ins.filter(e => e.indoor && e.indoor.pm25 != null);
   return [
-    measured("실내 기온", "t", [["18°C 미만", v => v < 18], ["18–24°C", v => v >= 18 && v <= 24], ["24°C 넘음", v => v > 24]]),
-    rh,
-    measured("실내 초미세먼지", "pm25", ["좋음", "보통", "나쁨", "매우나쁨"].map(g => [g, v => pm25Grade(v) === g])),
+    filled("실내 기온", "t", "tEst", [["18°C 미만", v => v < 18], ["18–24°C", v => v >= 18 && v <= 24], ["24°C 넘음", v => v > 24]]),
+    filled("실내 습도", "rh", "rhEst", INDOOR_RH_BANDS),
+    { title: "실내 초미세먼지", n: sum(has), measured: sum(has), estimated: 0, rows: ["좋음", "보통", "나쁨", "매우나쁨"].map(g => ({ name: g, sum: sum(has.filter(e => pm25Grade(e.indoor.pm25) === g)) })) },
   ].filter(s => s.n > 0);
 }
 
@@ -115,9 +123,8 @@ export const pm10Grade = v => (v == null ? null : v <= 30 ? "좋음" : v <= 80 ?
 export const pm25Grade = v => (v == null ? null : v <= 15 ? "좋음" : v <= 35 ? "보통" : v <= 75 ? "나쁨" : "매우나쁨");
 
 /** days: [{date, puffs, wx:{tmin,tmax,tmean,rh,precip,snow,wind,pm10,pm25}}] — wx 있는 날만 비교 */
-export function weatherCompare(days, tIn = DEFAULT_INDOOR_T) {
+export function weatherCompare(days) {
   const w = days.filter(d => d.wx && d.wx.tmean != null);
-  const inRh = d => estIndoorRh(d.wx.tmean, d.wx.rh, tIn);
   const has = k => d => d.wx[k] != null;
   const sections = [
     { title: "기온 (하루 평균)", groups: [
@@ -136,7 +143,6 @@ export function weatherCompare(days, tIn = DEFAULT_INDOOR_T) {
       { name: "보통 (40–70%)", test: d => d.wx.rh != null && d.wx.rh >= 40 && d.wx.rh <= 70 },
       { name: "습함 (70% 넘음)", test: d => d.wx.rh != null && d.wx.rh > 70 },
     ] },
-    { title: "실내 습도 (바깥 날씨로 추정)", only: d => inRh(d) != null, groups: INDOOR_RH_BANDS.map(([name, test]) => ({ name, test: d => test(inRh(d)) })) },
     { title: "미세먼지 PM10", only: has("pm10"), groups: ["좋음", "보통", "나쁨", "매우나쁨"].map(g => ({ name: g, test: d => pm10Grade(d.wx.pm10) === g })) },
     { title: "초미세먼지 PM2.5", only: has("pm25"), groups: ["좋음", "보통", "나쁨", "매우나쁨"].map(g => ({ name: g, test: d => pm25Grade(d.wx.pm25) === g })) },
     { title: "비·눈", groups: [

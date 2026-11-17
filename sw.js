@@ -1,5 +1,5 @@
 // 앱 화면 파일만 캐시해 오프라인에서도 열리게 한다. 날씨 API 요청은 건드리지 않는다.
-const CACHE = "inhaler-v1.2.0";
+const CACHE = "inhaler-v1.3.0";
 const SHELL = ["./", "index.html", "style.css", "app.js", "analysis.js", "store.js", "weather.js", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 
