@@ -140,6 +140,13 @@
     </section>
 
     <section class="card">
+      <h2>실내 습도 추정</h2>
+      <p class="sub">실내 센서가 없어도, 바깥 공기의 수분량이 실내 온도로 데워졌을 때의 습도를 계산해 실내 기록에 붙여요. 겨울 난방 때 실내가 얼마나 건조한지 알 수 있어요. 가습기·빨래·요리로 생기는 수분은 반영하지 못하고, 직접 적은 습도가 있으면 그 값을 써요.</p>
+      <label class="row" for="indoorTempInput"><span>평소 실내 온도</span><input id="indoorTempInput" type="number" inputmode="decimal" step="0.5" min="15" max="30" style="width:84px"><span>°C</span></label>
+      <p class="sub" id="indoorTempLine"></p>
+    </section>
+
+    <section class="card">
       <h2>백업</h2>
       <p class="sub">기록은 이 휴대폰 안에만 저장돼요. 휴대폰을 바꾸거나 앱을 지우기 전에 백업 파일을 만들어 두세요.</p>
       <div class="row wrap">

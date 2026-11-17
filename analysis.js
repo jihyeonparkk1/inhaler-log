@@ -35,18 +35,37 @@ export function placeSplit(events) {
   return { total, rows };
 }
 
-/** 사용자가 적은 실내 수치(기온·습도·PM2.5)별 흡입 횟수. 기준 비교가 없는 단순 분포. */
-export function indoorStats(events) {
-  const ins = events.filter(e => e.place === "in" && e.indoor);
-  const bands = (title, key, defs) => ({
-    title,
-    n: ins.filter(e => e.indoor[key] != null).reduce((a, e) => a + evPuffs(e), 0),
-    rows: defs.map(([name, test]) => ({ name, sum: ins.filter(e => e.indoor[key] != null && test(e.indoor[key])).reduce((a, e) => a + evPuffs(e), 0) })),
-  });
+/* 실내 습도 추정: 바깥 공기의 수증기량은 그대로인 채 실내 온도로 데워진다고 보고 상대습도를 다시 계산한다.
+ * 포화수증기압은 Magnus 식(hPa). 바깥이 실내보다 덥거나 같으면(냉방·환기) 이 계산이 맞지 않으므로
+ * 바깥 습도를 쓰되 에어컨 제습을 감안해 65%로 자른다. 가습기·빨래·요리 수분은 반영하지 못한다. */
+export const satVp = t => 6.112 * Math.exp((17.62 * t) / (243.12 + t));
+export const DEFAULT_INDOOR_T = 22;
+export function estIndoorRh(tOut, rhOut, tIn = DEFAULT_INDOOR_T) {
+  if (tOut == null || rhOut == null) return null;
+  if (tOut >= tIn) return Math.round(Math.min(rhOut, 65));
+  return Math.max(5, Math.min(100, Math.round((rhOut * satVp(tOut)) / satVp(tIn))));
+}
+export const INDOOR_RH_BANDS = [["매우 건조 (30% 미만)", v => v < 30], ["건조 (30–40%)", v => v >= 30 && v < 40], ["적정 (40–60%)", v => v >= 40 && v <= 60], ["습함 (60% 넘음)", v => v > 60]];
+
+/** 실내 기록의 실내 수치별 흡입 횟수. 습도는 직접 적은 값이 없으면 바깥 날씨로 추정한 값을 쓴다. */
+export function indoorStats(events, tIn = DEFAULT_INDOOR_T) {
+  const ins = events.filter(e => e.place === "in");
+  const sum = arr => arr.reduce((a, e) => a + evPuffs(e), 0);
+  const measured = (title, key, defs) => {
+    const has = ins.filter(e => e.indoor && e.indoor[key] != null);
+    return { title, n: sum(has), measured: sum(has), estimated: 0, rows: defs.map(([name, test]) => ({ name, sum: sum(has.filter(e => test(e.indoor[key]))) })) };
+  };
+  const rhOf = e => (e.indoor && e.indoor.rh != null ? { v: e.indoor.rh, est: false } : (() => { const v = estIndoorRh(e.wx?.t, e.wx?.rh, tIn); return v == null ? null : { v, est: true }; })());
+  const withRh = ins.map(e => ({ e, r: rhOf(e) })).filter(x => x.r);
+  const rh = {
+    title: "실내 습도", n: sum(withRh.map(x => x.e)),
+    measured: sum(withRh.filter(x => !x.r.est).map(x => x.e)), estimated: sum(withRh.filter(x => x.r.est).map(x => x.e)),
+    rows: INDOOR_RH_BANDS.map(([name, test]) => ({ name, sum: sum(withRh.filter(x => test(x.r.v)).map(x => x.e)) })),
+  };
   return [
-    bands("실내 기온", "t", [["18°C 미만", v => v < 18], ["18–24°C", v => v >= 18 && v <= 24], ["24°C 넘음", v => v > 24]]),
-    bands("실내 습도", "rh", [["건조 (40% 미만)", v => v < 40], ["적정 (40–60%)", v => v >= 40 && v <= 60], ["습함 (60% 넘음)", v => v > 60]]),
-    bands("실내 초미세먼지", "pm25", ["좋음", "보통", "나쁨", "매우나쁨"].map(g => [g, v => pm25Grade(v) === g])),
+    measured("실내 기온", "t", [["18°C 미만", v => v < 18], ["18–24°C", v => v >= 18 && v <= 24], ["24°C 넘음", v => v > 24]]),
+    rh,
+    measured("실내 초미세먼지", "pm25", ["좋음", "보통", "나쁨", "매우나쁨"].map(g => [g, v => pm25Grade(v) === g])),
   ].filter(s => s.n > 0);
 }
 
@@ -96,8 +115,9 @@ export const pm10Grade = v => (v == null ? null : v <= 30 ? "좋음" : v <= 80 ?
 export const pm25Grade = v => (v == null ? null : v <= 15 ? "좋음" : v <= 35 ? "보통" : v <= 75 ? "나쁨" : "매우나쁨");
 
 /** days: [{date, puffs, wx:{tmin,tmax,tmean,rh,precip,snow,wind,pm10,pm25}}] — wx 있는 날만 비교 */
-export function weatherCompare(days) {
+export function weatherCompare(days, tIn = DEFAULT_INDOOR_T) {
   const w = days.filter(d => d.wx && d.wx.tmean != null);
+  const inRh = d => estIndoorRh(d.wx.tmean, d.wx.rh, tIn);
   const has = k => d => d.wx[k] != null;
   const sections = [
     { title: "기온 (하루 평균)", groups: [
@@ -116,6 +136,7 @@ export function weatherCompare(days) {
       { name: "보통 (40–70%)", test: d => d.wx.rh != null && d.wx.rh >= 40 && d.wx.rh <= 70 },
       { name: "습함 (70% 넘음)", test: d => d.wx.rh != null && d.wx.rh > 70 },
     ] },
+    { title: "실내 습도 (바깥 날씨로 추정)", only: d => inRh(d) != null, groups: INDOOR_RH_BANDS.map(([name, test]) => ({ name, test: d => test(inRh(d)) })) },
     { title: "미세먼지 PM10", only: has("pm10"), groups: ["좋음", "보통", "나쁨", "매우나쁨"].map(g => ({ name: g, test: d => pm10Grade(d.wx.pm10) === g })) },
     { title: "초미세먼지 PM2.5", only: has("pm25"), groups: ["좋음", "보통", "나쁨", "매우나쁨"].map(g => ({ name: g, test: d => pm25Grade(d.wx.pm25) === g })) },
     { title: "비·눈", groups: [

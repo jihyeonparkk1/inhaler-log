@@ -74,10 +74,30 @@ const pe = [ev("2026-04-01", 9, 1, { place: "in", indoor: { t: 22, rh: 35, pm25:
 const sp = A.placeSplit(pe);
 assert.equal(sp.total, 5); assert.equal(sp.rows.find(r => r.key === "in").sum, 2); assert.equal(sp.rows.find(r => r.key === "out").sum, 2); assert.equal(sp.rows.find(r => r.key === null).sum, 1);
 const is = A.indoorStats(pe);
-assert.equal(is.find(s => s.title === "실내 습도").rows[0].sum, 1);   // 35% 건조
-assert.equal(is.find(s => s.title === "실내 습도").rows[2].sum, 1);   // 65% 습함
+assert.equal(is.find(s => s.title === "실내 습도").rows[1].sum, 1);   // 35% 건조 (30–40%)
+assert.equal(is.find(s => s.title === "실내 습도").rows[3].sum, 1);   // 65% 습함
 assert.equal(is.find(s => s.title === "실내 초미세먼지").n, 1);
 const outDays = A.dailyCounts(pe.filter(e => e.place === "out"), "2026-04-03", "2026-04-01");
 assert.deepEqual(outDays.map(d => d.puffs), [2, 0, 0]);
 assert.deepEqual(A.dailyCounts([], "2026-04-02", "2026-04-01").map(d => d.puffs), [0, 0]);
 console.log("place tests: all passed");
+
+// 10) 실내 습도 추정 (Magnus): 바깥 0°C·60% → 실내 22°C에서 약 14%
+assert.equal(A.estIndoorRh(0, 60, 22), 14);
+assert.equal(A.estIndoorRh(-10, 70, 22), 8);       // 한겨울 → 매우 건조
+assert.equal(A.estIndoorRh(15, 80, 22), 52);
+assert.equal(A.estIndoorRh(30, 80, 22), 65);       // 바깥이 더 더우면(냉방) 65%로 자름
+assert.equal(A.estIndoorRh(24, 50, 22), 50);
+assert.equal(A.estIndoorRh(null, 50), null);
+// 실내 기록: 직접 적은 습도 우선, 없으면 추정
+const ie = [ev("2026-01-10", 9, 1, { place: "in", indoor: { t: 21, rh: 45, pm25: null }, wx: { t: 0, rh: 60 } }), ev("2026-01-10", 21, 2, { place: "in", wx: { t: 0, rh: 60 } }), ev("2026-01-11", 9, 1, { place: "out", wx: { t: 0, rh: 60 } })];
+const irh = A.indoorStats(ie).find(s => s.title === "실내 습도");
+assert.equal(irh.measured, 1); assert.equal(irh.estimated, 2);
+assert.equal(irh.rows.find(r => r.name.startsWith("매우 건조")).sum, 2);
+assert.equal(irh.rows.find(r => r.name.startsWith("적정")).sum, 1);
+// 날씨 비교에 실내 습도(추정) 구간 포함
+const wc2 = A.weatherCompare([{ date: "2026-01-10", puffs: 3, wx: { tmean: 0, tmin: -3, tmax: 3, rh: 60 } }, { date: "2026-05-10", puffs: 1, wx: { tmean: 18, tmin: 12, tmax: 24, rh: 70 } }]);
+const sec = wc2.sections.find(s => s.title.startsWith("실내 습도"));
+assert.equal(sec.rows.find(r => r.name.startsWith("매우 건조")).sum, 3);
+assert.equal(sec.rows.find(r => r.name.startsWith("적정")).sum, 1); // 18°C·70% → 22°C에서 약 55%
+console.log("indoor estimate tests: all passed");
