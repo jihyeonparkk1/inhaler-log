@@ -2,7 +2,7 @@ import { store } from "./store.js";
 import * as A from "./analysis.js";
 import { currentWeather, weatherAt, dailyRange, searchPlace, placeName } from "./weather.js";
 
-const VERSION = "1.4.0";
+const VERSION = "1.5.0";
 const TAGS = [["exercise", "운동"], ["cold", "감기·기침"], ["night", "밤에 깸"], ["smoke", "담배 연기"], ["dust", "먼지·청소"],
   ["pollen", "꽃가루"], ["pet", "반려동물"], ["chill", "찬 공기"], ["stress", "스트레스"], ["smell", "강한 냄새"],
   ["cooking", "요리 연기"], ["mold", "곰팡이"], ["hvac", "에어컨·난방"]];
@@ -476,13 +476,52 @@ $("#exportBtn").onclick = async () => {
   const data = { app: "inhaler-log", version: 1, exportedAt: new Date().toISOString(), events: S.events, meta: { manualLoc: S.meta.manualLoc || null, plan: S.meta.plan || null } };
   const name = `흡입기기록-${today()}.json`;
   const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
-  const file = new File([blob], name, { type: "application/json" });
   try {
-    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: "흡입기 기록 백업" }); }
-    else { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); }
+    await shareOrDownload(blob, name, "흡입기 기록 백업");
     await setMeta("lastBackup", Date.now()); renderSettings(); toast("백업 파일을 만들었어요. 파일 앱이나 iCloud에 보관하세요.");
   } catch (err) { if (err && err.name !== "AbortError") toast("백업을 만들지 못했어요"); }
 };
+/** 아이폰: 공유 시트(파일에 저장·AirDrop·메시지), 그 밖: 내려받기 */
+async function shareOrDownload(blob, name, title) {
+  const file = new File([blob], name, { type: blob.type });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title }); return; }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+
+/* ---------- 진료용 한 장 요약 ---------- */
+S.rp = 90;
+document.querySelectorAll("[data-rp]").forEach(b => { b.onclick = () => { S.rp = +b.dataset.rp; document.querySelectorAll("[data-rp]").forEach(x => x.setAttribute("aria-pressed", x === b)); }; });
+$("#reportBtn").onclick = async () => {
+  const t = today(), all = A.dailyCounts(S.events, t);
+  if (!all.length) { toast("기록이 쌓이면 요약을 만들 수 있어요"); return; }
+  $("#reportBtn").disabled = true;
+  try {
+    const R = await import("./report.js");
+    const to = all.length > 1 ? A.addDays(t, -1) : t; // 끝난 날까지만
+    let from = S.rp ? A.addDays(to, -(S.rp - 1)) : all[0].date;
+    if (from < all[0].date) from = all[0].date;
+    const locs = A.dayLocations(all, S.events, fallbackLoc());
+    const daysWx = all.map(d => { const l = locs.get(d.date); const rec = l && S.daily.get(`${d.date}@${l.key}`); return { ...d, wx: rec || null }; });
+    const D = R.reportData({ events: S.events, days: all, daysWx, plan: plan(), from, to });
+    const cv = R.drawReport(D, plan(), TAGS);
+    S.report = { R, cv, name: `흡입기기록-요약-${from}~${to}` };
+    $("#reportImg").src = cv.toDataURL("image/jpeg", 0.85);
+    $("#reportDlg").showModal();
+  } catch (err) { console.error(err); toast("요약을 만들지 못했어요"); }
+  finally { $("#reportBtn").disabled = false; }
+};
+$("#repPdf").onclick = async () => {
+  const { R, cv, name } = S.report;
+  try { const jpg = await R.canvasJpeg(cv); await shareOrDownload(R.jpegToPdf(jpg, cv.width, cv.height), `${name}.pdf`, "흡입기 기록 요약"); }
+  catch (err) { if (err && err.name !== "AbortError") toast("PDF를 만들지 못했어요"); }
+};
+$("#repImg").onclick = async () => {
+  const { cv, name } = S.report;
+  try { const png = await new Promise(r => cv.toBlob(r, "image/png")); await shareOrDownload(png, `${name}.png`, "흡입기 기록 요약"); }
+  catch (err) { if (err && err.name !== "AbortError") toast("이미지를 만들지 못했어요"); }
+};
+$("#repClose").onclick = () => $("#reportDlg").close();
 $("#importInput").onchange = async e => {
   const f = e.target.files[0]; e.target.value = ""; if (!f) return;
   try {

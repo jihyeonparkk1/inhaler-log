@@ -177,6 +177,9 @@ dialog form{display:flex;flex-direction:column;gap:10px;padding:20px}
 .chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-size:.86rem}
 .chip[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 
+.repdlg{width:min(720px,calc(100vw - 16px))}
+.rep{display:flex;flex-direction:column;gap:12px;padding:16px}
+.rep img{width:100%;height:auto;border:1px solid var(--line);border-radius:8px;background:#fff;max-height:65dvh;object-fit:contain}
 .toast{position:fixed;left:50%;bottom:calc(var(--tabh) + 24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);
   padding:10px 14px;border-radius:12px;font-size:.88rem;display:flex;gap:14px;align-items:center;z-index:10;max-width:calc(100vw - 32px)}
 .toast button{background:transparent;border:0;color:var(--accent-soft);font-weight:700;padding:0}

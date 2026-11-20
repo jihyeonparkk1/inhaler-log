@@ -61,6 +61,19 @@
       <p class="sub">기록 탭에서 흡입할 때마다 버튼을 눌러 주세요. 버튼을 누르지 않은 날은 0회로 계산해요.</p>
     </div>
     <div id="statsBody">
+      <section class="card">
+        <div><h2>진료용 한 장 요약</h2><p class="sub">의사에게 보여 줄 수 있게 기간을 골라 A4 한 장(PDF·이미지)으로 정리해요</p></div>
+        <div class="row wrap between">
+          <div class="seg" role="group" aria-label="요약 기간">
+            <button type="button" data-rp="30" aria-pressed="false">1개월</button>
+            <button type="button" data-rp="90" aria-pressed="true">3개월</button>
+            <button type="button" data-rp="180" aria-pressed="false">6개월</button>
+            <button type="button" data-rp="365" aria-pressed="false">1년</button>
+            <button type="button" data-rp="0" aria-pressed="false">전체</button>
+          </div>
+          <button class="primary" id="reportBtn" type="button">요약 만들기</button>
+        </div>
+      </section>
       <div class="tiles" id="tiles"></div>
       <div class="card control" id="controlCard"></div>
 
@@ -226,6 +239,19 @@
       </div>
     </div>
   </form>
+</dialog>
+
+<dialog id="reportDlg" class="repdlg">
+  <div class="rep">
+    <h2>진료용 한 장 요약</h2>
+    <img id="reportImg" alt="한 장 요약 미리보기">
+    <p class="sub">아이폰에서는 공유 창이 열려요. “파일에 저장”으로 보관하거나 진료 때 바로 보여 주세요.</p>
+    <div class="row wrap">
+      <button class="primary" id="repPdf" type="button">PDF 저장·공유</button>
+      <button class="ghost" id="repImg" type="button">이미지 저장·공유</button>
+      <button class="ghost" id="repClose" type="button">닫기</button>
+    </div>
+  </div>
 </dialog>
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
