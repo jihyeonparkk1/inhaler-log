@@ -2,7 +2,7 @@ import { store } from "./store.js";
 import * as A from "./analysis.js";
 import { currentWeather, weatherAt, dailyRange, searchPlace, placeName } from "./weather.js";
 
-const VERSION = "1.3.0";
+const VERSION = "1.4.0";
 const TAGS = [["exercise", "운동"], ["cold", "감기·기침"], ["night", "밤에 깸"], ["smoke", "담배 연기"], ["dust", "먼지·청소"],
   ["pollen", "꽃가루"], ["pet", "반려동물"], ["chill", "찬 공기"], ["stress", "스트레스"], ["smell", "강한 냄새"],
   ["cooking", "요리 연기"], ["mold", "곰팡이"], ["hvac", "에어컨·난방"]];
@@ -168,6 +168,7 @@ function placePills(ev) {
   return s;
 }
 const humOffset = () => A.humidityOffset(S.events).offset;
+const plan = () => ({ ...A.DEFAULT_PLAN, ...(S.meta.plan || {}) });
 function wxPills(ev) {
   return placePills(ev) + (ev.place === "in" ? `<span class="pill status">바깥</span>` : "") + outdoorPills(ev);
 }
@@ -195,7 +196,8 @@ function renderLog() {
   const todays = S.events.filter(e => A.evDate(e) === t);
   const n = todays.reduce((a, e) => a + A.evPuffs(e), 0);
   const last = S.events[0];
-  let line = `오늘 ${n}회`;
+  const pt = A.planTotals(plan());
+  let line = `오늘 ${n}회 (계획 ${pt.base}회 · 증량 시 ${pt.up}회)`;
   if (last) { const mins = Math.round((Date.now() - last.ts) / 60000); line += ` · 마지막 ${A.evDate(last) === t ? hm(last.ts) : prettyDate(A.evDate(last))}` + (mins < 60 ? ` (${mins}분 전)` : mins < 24 * 60 ? ` (${Math.floor(mins / 60)}시간 전)` : ""); }
   else line = "아직 기록이 없어요. 흡입할 때 아래 버튼을 눌러 주세요.";
   $("#todayLine").textContent = line;
@@ -205,7 +207,9 @@ function renderLog() {
   const dayKeys = [...byDay.keys()].slice(0, S.shown);
   $("#recent").innerHTML = dayKeys.length ? dayKeys.map(d => {
     const evs = byDay.get(d), sum = evs.reduce((a, e) => a + A.evPuffs(e), 0);
-    return `<div><div class="dayhead"><b>${d === t ? "오늘" : prettyDate(d)}</b><span>${sum}회</span></div><div class="daygroup">${evs.map(e => `
+    const st = A.dayStatus(sum, plan());
+    const badge = d === t ? `${sum}/${pt.base}회` : `${sum}회 · <span class="st st-${st}">${A.STATUS[st]}</span>`;
+    return `<div><div class="dayhead"><b>${d === t ? "오늘" : prettyDate(d)}</b><span>${badge}</span></div><div class="daygroup">${evs.map(e => `
       <button class="ev" type="button" data-id="${e.id}">
         <span class="t">${hm(e.ts)}</span>
         <span class="body"><span class="wx">${wxPills(e)}</span>${(e.tags || []).length || e.note ? `<span class="tagline">${esc([...(e.tags || []).map(k => TAGNAME[k]).filter(Boolean), e.note].filter(Boolean).join(" · "))}</span>` : ""}<span class="place">${placeText(e)}</span></span>
@@ -297,11 +301,11 @@ $("#editForm").onsubmit = async e => {
 
 /* ---------- 화면: 분석 ---------- */
 function niceMax(v) { if (v <= 0) return 1; const e = Math.pow(10, Math.floor(Math.log10(v))); for (const s of [1, 2, 2.5, 3, 4, 5, 6, 8, 10]) if (s * e >= v) return s * e; return 10 * e; }
-function barChart(el, items, { height = 190, fmt = r1, every = 0, mark = [] } = {}) {
+function barChart(el, items, { height = 190, fmt = r1, every = 0, mark = [], ref = null } = {}) {
   if (!items.length) { el.innerHTML = ""; return; }
   const W = Math.max(280, el.clientWidth || 600), H = height, ml = 30, mr = 6, mt = 20, mb = 24;
   const pw = W - ml - mr, ph = H - mt - mb;
-  const max = niceMax(Math.max(...items.map(i => i.value)) * 1.1);
+  const max = niceMax(Math.max(...items.map(i => i.value), ref ? ref.value : 0) * 1.1);
   const band = pw / items.length, bw = Math.min(36, band * 0.64);
   const y = v => mt + ph - (v / max) * ph;
   const step = every || Math.ceil(items.length / (W < 420 ? 6 : 12));
@@ -315,6 +319,7 @@ function barChart(el, items, { height = 190, fmt = r1, every = 0, mark = [] } = 
     if (i % step === 0 || i === items.length - 1 && step === 1) s += `<text x="${cx}" y="${H - 7}" text-anchor="middle">${esc(it.label)}</text>`;
     s += `<rect x="${ml + band * i}" y="${mt}" width="${band}" height="${ph}" fill="transparent" data-i="${i}"/>`;
   });
+  if (ref) s += `<line x1="${ml}" x2="${W - mr}" y1="${y(ref.value)}" y2="${y(ref.value)}" stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="5 4" opacity=".55" pointer-events="none"/><text x="${W - mr}" y="${y(ref.value) - 5}" text-anchor="end" pointer-events="none">${esc(ref.label)}</text>`;
   s += `</svg><div class="tip" hidden></div>`;
   el.innerHTML = s;
   const tip = el.querySelector(".tip"), svg = el.querySelector("svg");
@@ -360,15 +365,28 @@ function renderStats() {
   if (!days.length) { $("#statsLine").textContent = ""; return; }
   $("#statsLine").textContent = `${prettyDate(days[0].date)}부터 ${days.length}일 · 총 ${days.reduce((a, d) => a + d.puffs, 0)}회`;
 
-  const T = A.tiles(days, t);
-  const tile = s => `<div class="tile"><div class="k">${s.label} 하루 평균</div><div class="v">${s.n ? r1(s.avg) : "–"}<small>회</small></div><div class="n">${s.n}일 · 총 ${s.sum}회</div></div>`;
-  $("#tiles").innerHTML = tile(T.month) + tile(T.quarter) + tile(T.year) + tile(T.all);
-  const alert = T.week.useDays > 2;
-  $("#controlCard").className = `card control${alert ? " alert" : ""}`;
-  $("#controlCard").innerHTML = `<div class="big">${T.week.useDays}</div><div><b>최근 7일 중 사용한 날 (${T.week.sum}회)</b><p class="sub">${alert ? "증상 완화용 흡입기를 주 2일 넘게 쓰면 천식 조절이 충분하지 않을 수 있어요(GINA 기준). 담당 의사와 상의해 보세요." : "증상 완화용 흡입기를 주 2일 이하로 쓰면 GINA 기준으로 조절이 잘 되는 편이에요."}</p></div>`;
+  const T = A.tiles(days, t), P = plan(), pt = A.planTotals(P);
+  const tdt = A.parseYmd(t), y = tdt.getFullYear(), m = tdt.getMonth() + 1, q = Math.ceil(m / 3);
+  const inQ = d => { const dd = A.parseYmd(d.date); return dd.getFullYear() === y && Math.ceil((dd.getMonth() + 1) / 3) === q; };
+  const ups = { month: A.upDays(days.filter(d => d.date.startsWith(`${y}-${A.pad(m)}`)), P), quarter: A.upDays(days.filter(inQ), P), year: A.upDays(days.filter(d => d.date.startsWith(`${y}-`)), P), all: A.upDays(days, P) };
+  const tile = (s, k) => `<div class="tile"><div class="k">${s.label} 하루 평균</div><div class="v">${s.n ? r1(s.avg) : "–"}<small>회</small></div><div class="n">${s.n}일 · 증량 ${ups[k]}일</div></div>`;
+  $("#tiles").innerHTML = tile(T.month, "month") + tile(T.quarter, "quarter") + tile(T.year, "year") + tile(T.all, "all");
+
+  // 최근 7일(어제까지) 복용 현황: 정기 복용 흡입기라 "자주 썼는지"가 아니라 계획대로였는지·증량한 날이 며칠인지를 본다
+  const W = A.statusSummary(days, t, P, 7);
+  const upTotal = W.up + W.over;
+  let note;
+  if (!W.days) note = "어제까지의 기록이 쌓이면 최근 7일 동안 계획대로 썼는지, 증량한 날이 며칠인지 보여 드려요.";
+  else if (W.over) note = `계획한 증량(하루 ${pt.up}회)보다 많이 쓴 날이 ${W.over}일 있어요. 담당 의사가 알려 준 행동 계획을 확인해 보세요.`;
+  else if (upTotal >= 3) note = `최근 7일 중 ${upTotal}일 증량했어요. 증량하는 날이 이어지면 담당 의사와 상의해 보세요.`;
+  else if (W.none || W.less) note = `정기 복용(하루 ${pt.base}회)보다 적게 기록된 날이 ${W.none + W.less}일 있어요. 깜빡하고 기록하지 못했다면 “시간 정해서 추가”로 넣어 주세요.`;
+  else note = `최근 ${W.days}일 동안 계획대로 복용했어요.`;
+  $("#controlCard").className = `card control${W.over || upTotal >= 3 ? " alert" : ""}`;
+  $("#controlCard").innerHTML = `<div class="wk">${[["routine", W.routine], ["up", upTotal], ["less", W.less + W.none]].map(([k, v]) => `<div class="st-${k}"><b>${v}</b>${k === "routine" ? "계획대로" : k === "up" ? "증량" : "적게·없음"}</div>`).join("")}</div>
+    <div><b>최근 ${W.days || 7}일 복용 현황 <small class="sub">(${esc(P.name || "흡입기")} · 평소 아침 ${P.am}·저녁 ${P.pm}, 증량 시 아침 ${P.amUp}·저녁 ${P.pmUp})</small></b><p class="sub">${note}</p></div>`;
 
   const ps = A.periodSeries(days, S.period);
-  barChart($("#periodChart"), ps.map(p => ({ label: p.label, value: p.avg, tip: `${p.full} · 하루 ${r1(p.avg)}회 · ${p.n}일 · 총 ${p.sum}회` })), { mark: [ps.length - 1], every: ps.length <= 8 ? 1 : 0 });
+  barChart($("#periodChart"), ps.map(p => ({ label: p.label, value: p.avg, tip: `${p.full} · 하루 ${r1(p.avg)}회 · ${p.n}일 · 총 ${p.sum}회` })), { mark: [ps.length - 1], every: ps.length <= 8 ? 1 : 0, ref: { value: pt.base, label: `계획 ${pt.base}회` } });
 
   const tod = A.timeOfDay(S.events);
   $("#blocks").innerHTML = tod.blocks.map((b, i) => `<div class="${i === 0 && b.share >= 0.15 ? "night" : ""}"><b>${Math.round(b.share * 100)}%</b>${b.name}</div>`).join("");
@@ -423,6 +441,9 @@ async function renderSettings() {
   const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
   $("#installCard").hidden = !!standalone;
   $("#versionLine").textContent = `버전 ${VERSION}`;
+  const P = plan();
+  for (const k of ["am", "pm", "amUp", "pmUp"]) if (document.activeElement !== $(`#plan-${k}`)) $(`#plan-${k}`).value = P[k];
+  if (document.activeElement !== $("#plan-name")) $("#plan-name").value = P.name;
   const ho = A.humidityOffset(S.events);
   const cur = new Date().getMonth();
   $("#indoorTable").innerHTML = A.TYPICAL_INDOOR.map(([t, rh], m) => `<div class="${m === cur ? "cur" : ""}"><b>${m + 1}월</b><span>${t}°C</span><span>${Math.max(10, Math.min(90, rh + ho.offset))}%</span></div>`).join("");
@@ -442,8 +463,17 @@ $("#placeForm").onsubmit = async e => {
 $("#placeResults").onclick = async e => { const b = e.target.closest("[data-i]"); if (!b) return; await setMeta("manualLoc", S.placeHits[+b.dataset.i]); $("#placeResults").innerHTML = ""; $("#placeInput").value = ""; renderSettings(); backfill(); scheduleSync(); toast("기본 지역을 정했어요"); };
 $("#manualLine").onclick = async e => { if (e.target.id === "clearManual") { await setMeta("manualLoc", null); renderSettings(); } };
 
+$("#planForm").onchange = async () => {
+  const n = id => { const v = Math.round(Number($(id).value)); return Number.isFinite(v) && v >= 0 && v <= 10 ? v : null; };
+  const p = { name: $("#plan-name").value.trim().slice(0, 30) || A.DEFAULT_PLAN.name, am: n("#plan-am"), pm: n("#plan-pm"), amUp: n("#plan-amUp"), pmUp: n("#plan-pmUp") };
+  if ([p.am, p.pm, p.amUp, p.pmUp].includes(null)) { toast("횟수는 0~10 사이로 적어 주세요"); renderSettings(); return; }
+  if (p.am + p.pm < 1) { toast("평소 복용은 하루 1회 이상이어야 해요"); renderSettings(); return; }
+  if (p.amUp + p.pmUp < p.am + p.pm) { toast("증량 시 횟수는 평소보다 같거나 많아야 해요"); renderSettings(); return; }
+  await setMeta("plan", p); renderSettings(); renderLog(); toast("복용 계획을 저장했어요");
+};
+$("#planForm").onsubmit = e => e.preventDefault();
 $("#exportBtn").onclick = async () => {
-  const data = { app: "inhaler-log", version: 1, exportedAt: new Date().toISOString(), events: S.events, meta: { manualLoc: S.meta.manualLoc || null } };
+  const data = { app: "inhaler-log", version: 1, exportedAt: new Date().toISOString(), events: S.events, meta: { manualLoc: S.meta.manualLoc || null, plan: S.meta.plan || null } };
   const name = `흡입기기록-${today()}.json`;
   const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
   const file = new File([blob], name, { type: "application/json" });
@@ -463,6 +493,7 @@ $("#importInput").onchange = async e => {
     for (const x of fresh) { S.events.push(x); added++; }
     await store.putMany("events", fresh); sortEvents();
     if (!S.meta.manualLoc && j.meta?.manualLoc) await setMeta("manualLoc", j.meta.manualLoc);
+    if (!S.meta.plan && j.meta?.plan) await setMeta("plan", j.meta.plan);
     renderAll(); toast(`${added}건을 불러왔어요 (이미 있던 ${j.events.length - added}건은 건너뜀)`); backfill(); scheduleSync();
   } catch { toast("이 파일은 흡입기 기록 백업이 아니에요"); }
 };
@@ -498,7 +529,7 @@ function renderAll() { renderLog(); renderStats(); if (S.view === "settings") re
     const [events, daily] = await Promise.all([store.all("events"), store.all("daily")]);
     S.events = events; sortEvents();
     daily.forEach(r => S.daily.set(r.key, r));
-    for (const k of ["lastLoc", "manualLoc", "lastBackup", "place"]) S.meta[k] = await store.get("meta", k);
+    for (const k of ["lastLoc", "manualLoc", "lastBackup", "place", "plan"]) S.meta[k] = await store.get("meta", k);
     paintPlaceSeg();
   } catch {
     $("#todayLine").textContent = "이 브라우저에서는 기록을 저장할 수 없어요 (개인정보 보호 모드인지 확인해 주세요).";

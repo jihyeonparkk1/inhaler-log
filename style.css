@@ -55,6 +55,21 @@ fieldset.indoor legend{padding:0 4px}
 .indoor-grid label{display:flex;flex-direction:column;gap:3px;font-size:.8rem;color:var(--muted);min-width:0}
 .indoor-grid span{display:flex;align-items:center;gap:4px;color:var(--ink)}
 .indoor-grid input{width:100%;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px}
+/* 복용 계획 */
+.planform{display:flex;flex-direction:column;gap:10px}
+.planform label.full{display:flex;flex-direction:column;gap:4px;font-size:.84rem;color:var(--muted)}
+.planform input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-width:0;width:100%}
+.plangrid{display:grid;grid-template-columns:4.5em 1fr 1fr;gap:8px;align-items:center;font-size:.9rem}
+.plangrid .label{text-align:center}
+.control .wk{display:grid;grid-template-columns:repeat(3,auto);gap:6px;flex-shrink:0}
+.control .wk div{display:flex;flex-direction:column;align-items:center;background:var(--soft);border-radius:10px;padding:6px 8px;font-size:.72rem;color:var(--muted);min-width:3.6em}
+.control .wk b{font-family:var(--num);font-size:1.3rem;color:var(--ink)}
+.control .wk .st-up b{color:var(--more)}
+@media (max-width:420px){.card.control{flex-direction:column;align-items:stretch}.card.control .wk{grid-template-columns:repeat(3,1fr)}}
+.st{font-weight:600}
+.st-routine{color:var(--less)}
+.st-up,.st-over{color:var(--more)}
+.st-less,.st-none{color:var(--warn)}
 .monthtable{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
 @media (max-width:420px){.monthtable{grid-template-columns:repeat(4,1fr)}}
 .monthtable div{display:flex;flex-direction:column;align-items:center;background:var(--soft);border-radius:10px;padding:6px 2px;font-size:.78rem;font-variant-numeric:tabular-nums}

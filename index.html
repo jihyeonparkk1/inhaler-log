@@ -125,6 +125,19 @@
     <header class="top"><h1>설정</h1></header>
 
     <section class="card">
+      <h2>복용 계획</h2>
+      <p class="sub">의사가 정해 준 정기 복용 횟수와, 증상이 나쁠 때 늘리는 횟수예요. 분석에서 “계획대로 / 증량 / 적게” 날을 나누는 기준이 돼요.</p>
+      <form id="planForm" class="planform">
+        <label class="full">흡입기 이름<input id="plan-name" type="text" maxlength="30" autocomplete="off"></label>
+        <div class="plangrid">
+          <span></span><span class="label">아침</span><span class="label">저녁</span>
+          <span>평소</span><input id="plan-am" type="number" inputmode="numeric" min="0" max="10" step="1" aria-label="평소 아침 횟수"><input id="plan-pm" type="number" inputmode="numeric" min="0" max="10" step="1" aria-label="평소 저녁 횟수">
+          <span>증량 시</span><input id="plan-amUp" type="number" inputmode="numeric" min="0" max="10" step="1" aria-label="증량 시 아침 횟수"><input id="plan-pmUp" type="number" inputmode="numeric" min="0" max="10" step="1" aria-label="증량 시 저녁 횟수">
+        </div>
+      </form>
+    </section>
+
+    <section class="card">
       <h2>위치</h2>
       <p class="sub" id="locStatus">확인 중…</p>
       <div class="row wrap">

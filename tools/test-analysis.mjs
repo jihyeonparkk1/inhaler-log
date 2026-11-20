@@ -103,3 +103,13 @@ assert.equal(tSec.rows.find(r => r.name === "24°C 넘음").sum, 1);   // 25.7
 assert.equal(tSec.rows.find(r => r.name === "18–24°C").sum, 2);     // 평균 22
 assert.equal(hSec.estimated, 3); assert.equal(hSec.rows.find(r => r.name.startsWith("건조")).sum, 3); // 35%
 console.log("indoor average tests: all passed");
+
+// 11) 복용 계획: 기본 1+1, 증량 2+2
+assert.equal(A.dayStatus(0), "none"); assert.equal(A.dayStatus(1), "less"); assert.equal(A.dayStatus(2), "routine");
+assert.equal(A.dayStatus(3), "up"); assert.equal(A.dayStatus(4), "up"); assert.equal(A.dayStatus(5), "over");
+assert.equal(A.dayStatus(3, { am: 2, pm: 2, amUp: 4, pmUp: 4 }), "less");
+const pd = ["2026-11-13", "2026-11-14", "2026-11-15", "2026-11-16", "2026-11-17", "2026-11-18", "2026-11-19", "2026-11-20"].map((date, i) => ({ date, puffs: [2, 2, 4, 3, 1, 0, 6, 1][i] }));
+const ss = A.statusSummary(pd, "2026-11-20");
+assert.deepEqual(ss, { days: 7, none: 1, less: 1, routine: 2, up: 2, over: 1 }); // 오늘(20일, 1회)은 제외
+assert.equal(A.upDays(pd), 3);
+console.log("plan tests: all passed");

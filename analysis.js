@@ -223,3 +223,28 @@ export function wmoText(c) {
   if (c >= 71 && c <= 77) return "눈"; if (c >= 80 && c <= 82) return "소나기"; if (c === 85 || c === 86) return "눈 소나기";
   if (c >= 95) return "뇌우"; return "";
 }
+
+/* 복용 계획: 정기 복용(예: 심비코트 아침 1·저녁 1)과 악화 시 스스로 늘리는 증량(아침 2·저녁 2).
+ * 정기 복용 흡입기는 "많이 쓰면 조절이 안 된다"가 아니라 계획대로 썼는지, 증량한 날이 얼마나 되는지가 중요하다. */
+export const DEFAULT_PLAN = { name: "심비코트", am: 1, pm: 1, amUp: 2, pmUp: 2 };
+export function planTotals(p = DEFAULT_PLAN) { return { base: p.am + p.pm, up: p.amUp + p.pmUp }; }
+export const STATUS = {
+  none: "기록 없음", less: "계획보다 적게", routine: "계획대로", up: "증량", over: "증량보다 많이",
+};
+export function dayStatus(puffs, plan = DEFAULT_PLAN) {
+  const { base, up } = planTotals(plan);
+  if (!puffs) return "none";
+  if (puffs < base) return "less";
+  if (puffs === base) return "routine";
+  if (puffs <= up) return "up";
+  return "over";
+}
+/** 끝난 날만(오늘 제외) 상태별 일수. 오늘은 저녁 복용 전이라 "적게"로 잘못 셀 수 있어서 뺀다. */
+export function statusSummary(days, today, plan = DEFAULT_PLAN, lastN = 7) {
+  const done = days.filter(d => d.date < today).slice(-lastN);
+  const c = { none: 0, less: 0, routine: 0, up: 0, over: 0 };
+  for (const d of done) c[dayStatus(d.puffs, plan)]++;
+  return { days: done.length, ...c };
+}
+/** 기간 안에서 증량(또는 그 이상)한 날 수 */
+export const upDays = (days, plan = DEFAULT_PLAN) => days.filter(d => { const s = dayStatus(d.puffs, plan); return s === "up" || s === "over"; }).length;
